@@ -1,20 +1,18 @@
 import os
-import subprocess
-
 import gi
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('XApp', '1.0')
-gi.require_version('Flatpak', '1.0')
 
-from gi.repository import Gtk, XApp, Flatpak, GLib
+from gi.repository import Gtk, XApp, GLib
 
+import utils
 
 class MainWindow(Gtk.Window):
     def __init__(self):
         super().__init__()
-        self.liststore_tab0 = Gtk.ListStore(str, str, str)
-        self.liststore_tab1 = Gtk.ListStore(str, str, str, str)
+        self.liststore_tab0 = Gtk.ListStore(str, str, str, str, utils.flatpak_ref)
+        self.liststore_tab1 = Gtk.ListStore(str, str, str, str, str, utils.flatpak_ref)
 
         # Create a StatusIcon
         #self.status_icon = XApp.StatusIcon()
@@ -62,22 +60,15 @@ class MainWindow(Gtk.Window):
         self.treeview_tab0 = treeview
         scrolled_window.add(treeview)
 
-        # Tableau
-        # Création d'une colonne texte pour le nom
-        column_text = Gtk.TreeViewColumn("Name", Gtk.CellRendererText(), text=0)
-        treeview.append_column(column_text)
-
-        column_text = Gtk.TreeViewColumn("Version", Gtk.CellRendererText(), text=1)
-        treeview.append_column(column_text)
-
-        column_text = Gtk.TreeViewColumn("Type", Gtk.CellRendererText(), text=2)
-        treeview.append_column(column_text)
+        for col_index, col_name in enumerate(["Name", "Package", "Version", "Type"]):
+            column_text = Gtk.TreeViewColumn(col_name, Gtk.CellRendererText(), text=col_index)
+            treeview.append_column(column_text)
 
     def _init_ui_tab1(self):
         box = Gtk.Box()
         vbox = Gtk.VBox()
         box.add(vbox)
-        self.notebook.append_page(box, Gtk.Label(label="Avaiable"))
+        self.notebook.append_page(box, Gtk.Label(label="Available"))
 
         # scrolled_window
         scrolled_window = Gtk.ScrolledWindow()
@@ -94,53 +85,34 @@ class MainWindow(Gtk.Window):
 
         scrolled_window.add(treeview)
 
-        # Tableau
-        # Création d'une colonne texte pour le nom
-        column_text = Gtk.TreeViewColumn("Name", Gtk.CellRendererText(), text=0)
-        treeview.append_column(column_text)
-
-        column_text = Gtk.TreeViewColumn("Branch", Gtk.CellRendererText(), text=1)
-        treeview.append_column(column_text)
-
-        column_text = Gtk.TreeViewColumn("Arch", Gtk.CellRendererText(), text=2)
-        treeview.append_column(column_text)
-
-        column_text = Gtk.TreeViewColumn("Remote", Gtk.CellRendererText(), text=3)
-        treeview.append_column(column_text)
-
+        for col_index, col_name in enumerate(["Name", "Package", "Branch", "Arch", "Remote"]):
+            column_text = Gtk.TreeViewColumn(col_name, Gtk.CellRendererText(), text=col_index)
+            treeview.append_column(column_text)
 
     def _fill_treeview_tab0(self) -> None:
-        installation = Flatpak.Installation.new_system()
-        refs = Flatpak.Installation.list_installed_refs(installation)
+        refs = utils.flatpak_get_installed_refs()
         for ref in refs:
-            # Kind
-            kind = ref.get_kind()
-            if kind == Flatpak.RefKind.APP:
-                kind_str = "Application"
-            elif kind == Flatpak.RefKind.RUNTIME:
-                kind_str = "Runtime"
-            else:
-                kind_str = "?"
-
-            data = [ref.get_name(), ref.get_appdata_version(), kind_str]
+            data = [
+                ref.get_appdata_name(),
+                ref.get_name(),
+                utils.get_flatpak_ref_version_str(ref),
+                utils.get_flatpak_ref_kind_str(ref),
+                ref
+            ]
             self.liststore_tab0.append(data)
 
     def _fill_treeview_tab1(self):
-        installation = Flatpak.Installation.new_system()
-        remotes = installation.list_remotes()
-
-        for remote in remotes:
-            if remote.get_disabled():
-                continue
-
-            refs = installation.list_remote_refs_sync(remote.get_name(), None)
-            for ref in refs:
-                kind_str = ref.get_kind()
-                if kind_str != Flatpak.RefKind.APP:
-                    continue
-
-                data = [ref.get_name(), ref.get_arch(), ref.get_branch(), remote.get_name()]
-                self.liststore_tab1.append(data)
+        refs = utils.flatpak_get_remotes_applications()
+        for ref in refs:
+            data = [
+                ref.get_name(),
+                ref.get_name(),
+                ref.get_arch(),
+                ref.get_branch(),
+                ref.get_remote_name(),
+                ref
+            ]
+            self.liststore_tab1.append(data)
 
     def _on_notebook_page_switched(self, notebook, tab, index):
         if index == 0:
@@ -155,10 +127,9 @@ class MainWindow(Gtk.Window):
         if not treeiter:
             return
 
-        app_id = model[treeiter][0]
-
-        cmd = ['flatpak', 'run', app_id]
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+        # Fixme
+        app_id = model[treeiter][1]
+        utils.flatpak_launch_app(app_id)
 
     def on_install_button_clicked(self, widget) -> None:
         selection = self.treeview_tab1.get_selection()
@@ -167,31 +138,18 @@ class MainWindow(Gtk.Window):
         if not treeiter:
             return
 
-        app_id = model[treeiter][0]
-        branch = model[treeiter][1]
-        arch = model[treeiter][2]
-        remote_name = model[treeiter][3]
+        ref = model[treeiter][-1]
+        utils.flatpak_install_package(ref)
 
-        ref_name = f"app/{app_id}/{arch}/{branch}"
+    def on_uninstall_button_clicked(self):
+        selection = self.treeview_tab0.get_selection()
+        model, treeiter = selection.get_selected()
 
-        installation = Flatpak.Installation.new_system()
-        transaction = Flatpak.Transaction.new_for_installation(installation)
-        result = transaction.add_install(remote_name, ref_name)
+        if not treeiter:
+            return
 
-        def on_progress(transaction, progress, user_data):
-            print(f"Progress : {progress * 100:.2f}%")
-
-        transaction.connect("new-operation", on_progress, None)
-
-        try:
-            result = transaction.run()
-            if result == Flatpak.TransactionResult.DONE:
-                print(f"Installdone for{ref_name}")
-            else:
-                print(f"Error while installing: {ref_name}.")
-        except GLib.Error as e:
-            print(f"Error: {ref_name} : {e.message}")
-
+        ref = model[treeiter][-1]
+        utils.flatpak_uninstall_package(ref)
 
 def main():
     app = MainWindow()
