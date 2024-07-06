@@ -1,10 +1,10 @@
 import os
 import gi
 
-gi.require_version('Gtk', '3.0')
-gi.require_version('XApp', '1.0')
+gi.require_version("Gtk", "3.0")
+#gi.require_version("XApp", "1.0")
 
-from gi.repository import Gtk, XApp, GLib
+from gi.repository import Gtk, GLib #, XApp
 
 import utils
 
@@ -13,20 +13,19 @@ class MainWindow(Gtk.Window):
         super().__init__()
         self.liststore_tab0 = Gtk.ListStore(str, str, str, str, utils.flatpak_ref)
         self.liststore_tab1 = Gtk.ListStore(str, str, str, str, str, utils.flatpak_ref)
+        self.liststore_tab2 = Gtk.ListStore(str)
 
-        # Create a StatusIcon
-        #self.status_icon = XApp.StatusIcon()
-        #self.status_icon.set_from_icon_name("dialog-information")
-        #self.status_icon.set_title("My XApp Example")
-        #self.status_icon.set_tooltip_text("This is an example using XApp.StatusIcon")
-        #self.status_icon.set_visible(True)
+        # Filtres pour la recherche
+        self.liststore_tab1_filter = self.liststore_tab1.filter_new()
+        self.liststore_tab1_filter.set_visible_func(self._filter_func)
 
         self._init_ui()
         self._init_events()
 
     def _init_events(self) -> None:
         self.connect("destroy", Gtk.main_quit)
-        self.notebook.connect('switch-page', self._on_notebook_page_switched)
+        self.notebook.connect("switch-page", self._on_notebook_page_switched)
+        self.search_entry.connect("changed", self._on_entry_changed)
 
     def _init_ui(self) -> None:
         self.set_default_size(800, 600)
@@ -39,6 +38,7 @@ class MainWindow(Gtk.Window):
 
         self._init_ui_tab0()
         self._init_ui_tab1()
+        self._init_ui_tab2()
 
     def _init_ui_tab0(self):
         box = Gtk.Box()
@@ -52,9 +52,14 @@ class MainWindow(Gtk.Window):
         scrolled_window.set_hexpand(True)
         vbox.pack_start(scrolled_window, True, True, 0)
 
-        button = Gtk.Button(label="Launch")
-        button.connect("clicked", self.on_launch_button_clicked)
-        vbox.pack_start(button, False, False, 0)
+        # Launch button
+        launch_button = Gtk.Button(label="Launch")
+        launch_button.connect("clicked", self._on_launch_button_clicked)
+        vbox.pack_start(launch_button, False, False, 0)
+
+        remove_button = Gtk.Button(label="Uninstall")
+        remove_button.connect("clicked", self._on_uninstall_button_clicked)
+        vbox.pack_start(remove_button, False, False, 1)
 
         treeview = Gtk.TreeView(model=self.liststore_tab0)
         self.treeview_tab0 = treeview
@@ -70,6 +75,10 @@ class MainWindow(Gtk.Window):
         box.add(vbox)
         self.notebook.append_page(box, Gtk.Label(label="Available"))
 
+        self.search_entry = Gtk.Entry()
+        self.search_entry.set_placeholder_text("Type to filter...")
+        vbox.pack_start(self.search_entry, True, True, 0)
+
         # scrolled_window
         scrolled_window = Gtk.ScrolledWindow()
         scrolled_window.set_vexpand(True)
@@ -77,10 +86,10 @@ class MainWindow(Gtk.Window):
         vbox.pack_start(scrolled_window, True, True, 0)
 
         button = Gtk.Button(label="Install")
-        button.connect("clicked", self.on_install_button_clicked)
+        button.connect("clicked", self._on_install_button_clicked)
         vbox.pack_start(button, False, False, 0)
 
-        treeview = Gtk.TreeView(model=self.liststore_tab1)
+        treeview = Gtk.TreeView(model=self.liststore_tab1_filter)
         self.treeview_tab1 = treeview
 
         scrolled_window.add(treeview)
@@ -134,6 +143,8 @@ class MainWindow(Gtk.Window):
             self.liststore_tab0.append(data)
 
     def _fill_treeview_tab1(self):
+        self.liststore_tab1.clear()
+
         refs = utils.flatpak_get_remotes_applications()
         for ref in refs:
             data = [
@@ -175,7 +186,7 @@ class MainWindow(Gtk.Window):
         app_id = model[treeiter][1]
         utils.flatpak_launch_app(app_id)
 
-    def on_install_button_clicked(self, widget) -> None:
+    def _on_install_button_clicked(self, widget) -> None:
         selection = self.treeview_tab1.get_selection()
         model, treeiter = selection.get_selected()
 
@@ -183,9 +194,11 @@ class MainWindow(Gtk.Window):
             return
 
         ref = model[treeiter][-1]
-        utils.flatpak_install_package(ref)
+        result = utils.flatpak_install_package(self, ref)
+        if result:
+            self._fill_all()
 
-    def on_uninstall_button_clicked(self):
+    def _on_uninstall_button_clicked(self, widget) -> None:
         selection = self.treeview_tab0.get_selection()
         model, treeiter = selection.get_selected()
 
@@ -193,7 +206,34 @@ class MainWindow(Gtk.Window):
             return
 
         ref = model[treeiter][-1]
-        utils.flatpak_uninstall_package(ref)
+        result = utils.flatpak_uninstall_package(self, ref)
+        if result:
+            self._fill_all()
+
+    def _on_update_button_clicked(self, widget):
+        selection = self.treeview_tab2.get_selection()
+        model, treeiter = selection.get_selected()
+
+
+        if not treeiter:
+            return
+
+        ref = model[treeiter][-1]
+        result = utils.flatpak_update_packages([ref])
+        if result:
+            self._fill_all()
+
+
+    def _on_entry_changed(self, widget):
+        self.liststore_tab1_filter.refilter()
+    def _filter_func(self, model, iter, data):
+        filter_text = self.search_entry.get_text().lower()
+        if filter_text == "":
+            return True
+
+        name = model[iter][0].lower()
+        return filter_text in name
+
 
 def main():
     app = MainWindow()
