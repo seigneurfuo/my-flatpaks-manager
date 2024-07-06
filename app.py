@@ -89,7 +89,39 @@ class MainWindow(Gtk.Window):
             column_text = Gtk.TreeViewColumn(col_name, Gtk.CellRendererText(), text=col_index)
             treeview.append_column(column_text)
 
+    def _init_ui_tab2(self):
+        box = Gtk.Box()
+        vbox = Gtk.VBox()
+        box.add(vbox)
+        self.notebook.append_page(box, Gtk.Label(label="Updates"))
+
+        # scrolled_window
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_vexpand(True)
+        scrolled_window.set_hexpand(True)
+        vbox.pack_start(scrolled_window, True, True, 0)
+
+        # Launch button
+        launch_button = Gtk.Button(label="Update")
+        launch_button.connect("clicked", self._on_update_button_clicked)
+        vbox.pack_start(launch_button, False, False, 0)
+
+        treeview = Gtk.TreeView(model=self.liststore_tab2)
+        self.treeview_tab2 = treeview
+        scrolled_window.add(treeview)
+
+        for col_index, col_name in enumerate(["Name"]): # TODO: ["Name", "Version", "New Version", "Type"]
+            column_text = Gtk.TreeViewColumn(col_name, Gtk.CellRendererText(), text=col_index)
+            treeview.append_column(column_text)
+
+    def _fill_all(self):
+        self._fill_treeview_tab0()
+        self._fill_treeview_tab1()
+        self._fill_treeview_tab2()
+
     def _fill_treeview_tab0(self) -> None:
+        self.liststore_tab0.clear()
+
         refs = utils.flatpak_get_installed_refs()
         for ref in refs:
             data = [
@@ -114,13 +146,25 @@ class MainWindow(Gtk.Window):
             ]
             self.liststore_tab1.append(data)
 
+    def _fill_treeview_tab2(self):
+        self.liststore_tab2.clear()
+
+        refs = utils.flatpak_get_updates()
+        for ref in refs:
+            data = [
+                ref
+            ]
+            self.liststore_tab2.append(data)
+
     def _on_notebook_page_switched(self, notebook, tab, index):
         if index == 0:
             self._fill_treeview_tab0()
         elif index == 1:
             self._fill_treeview_tab1()
+        elif index == 2:
+            self._fill_treeview_tab2()
 
-    def on_launch_button_clicked(self, widget) -> None:
+    def _on_launch_button_clicked(self, widget) -> None:
         selection = self.treeview_tab0.get_selection()
         model, treeiter = selection.get_selected()
 
