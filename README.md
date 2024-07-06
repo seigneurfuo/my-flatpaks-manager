@@ -9,17 +9,18 @@ A simple, lightweight graphical manager for Flatpaks packages. Written in Python
 - python3
 - gtk3
 - libflatpak
-- python3-xapps
+- ~~python3-xapps~~
 
 ## Works
 
 - List installed Flatpaks ()
 - Launching an app from the list
+- Installing an app from remote repos
 
 ## To be added
 
-- Allow user to list avaibles remote Flatpaks
-  - Allow user to install a Flatpas from this list
+- ~~Allow user to list avaibles remote Flatpaks~~
+  - ~~Allow user to install a Flatpas from this list~~
 - Allow user to remove an installed Flatpaks
 - Allow user to list avaibles updates for installed Flatpaks
   - Allow user to update one or all Flatpak from this list
