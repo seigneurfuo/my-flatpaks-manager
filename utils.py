@@ -68,7 +68,7 @@ def flatpak_update_packages(packages):
     for package in packages:
         transaction.add_update(package, None)
 
-    _flatpak_check_transaction_result(transaction, None)
+    return _flatpak_check_transaction_result(transaction, None)
 
 def flatpak_launch_app(app_id):
     cmd = ['flatpak', 'run', app_id]
